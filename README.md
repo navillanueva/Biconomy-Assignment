@@ -8,15 +8,21 @@ The goal of this repo is to showcase the power of the Biconomy SDK using Account
 To run this locally, paste the following command in your terminal:
 
 ```bash
-  git clone https://github.com/bcnmy/quickstart.git
+  git clone https://github.com/navillanueva/Biconomy-Assignment.git
 ```
+Once the repo has been cloned, run:
 
-Alternatively you can use `npm` or `pnpm` if that suits you. 
+```bash
+  yarn install
+```
+You can also use **npm** as your package manager.
 
-The main purpose of this repository is to serve as the starting point for the Biconomy SDK Quick Start guide. 
+Now that you have everything set up, you can run the following command that will run the script:
 
+```bash
+  yarn run smartAccount mintNFTgasUSDC
+```
+ 
+The gas for the cost of minting this NFT will be payed by default in USDC as stated in the assignment. Upon successful mint you will see several details printed to your terminal which include: the useroperation information, userop hash, and transaction detail information once confirmed.
 
-
-## Pull requests welcome
-
-Have any improvements to be made? Feel free to make a Pull Request! 
+Thank you for your time!

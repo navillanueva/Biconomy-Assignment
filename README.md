@@ -1,17 +1,14 @@
+# Developer Relations Engineer Assignment 
 
-# Biconomy Quickstarter
-
-This Repository is used in the quickstart guide for the [Biconomy SDK](https://docs.biconomy.io/docs/quickstart) as well as the Node JS guides.
-
-This is a basic starter kit to create Node JS scripts with Typescript. It includes only a script for development and is meant for educational puproses. You will need additional scripts to optimize for production.
+The goal of this repo is to showcase the power of the Biconomy SDK using Account Abstraction to create a script that mint's an NFT paying the gas with USDC.
 
 
 ## Installation
 
-Clone this repository and then run
+To run this locally, paste the following command in your terminal:
 
 ```bash
-  yarn
+  git clone https://github.com/bcnmy/quickstart.git
 ```
 
 Alternatively you can use `npm` or `pnpm` if that suits you. 

@@ -1,13 +1,13 @@
 {
-  "name": "node_ts_starter",
+  "name": "assignment",
   "version": "1.0.0",
-  "description": "",
+  "description": "Integrating Biconomy SDK, minting an NFT and paying gas with USDC token",
   "main": "index.js",
   "scripts": {
     "dev": "npx nodemon"
   },
   "keywords": [],
-  "author": "",
+  "author": "Nicolas Arnedo",
   "license": "ISC",
   "devDependencies": {
     "@types/node": "^20.3.3",
@@ -21,8 +21,10 @@
     "@biconomy/bundler": "^3.1.0",
     "@biconomy/common": "^3.1.0",
     "@biconomy/core-types": "^3.1.0",
-    "@biconomy/paymaster": "^3.1.0",
     "@biconomy/modules": "^3.1.0",
-    "ethers": "5.7.2"
+    "@biconomy/paymaster": "^3.1.0",
+    "ethers": "5.7.2",
+    "inquirer": "^9.2.11",
+    "yargs": "^17.7.2"
   }
 }

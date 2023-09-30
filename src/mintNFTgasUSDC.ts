@@ -1,6 +1,5 @@
 require("dotenv").config();
 const chalk = require("chalk");
-import inquirer from "inquirer"; // find out what it does
 
 // importing the bundler package and providers from the ethers package
 import { Bundler } from "@biconomy/bundler";
@@ -124,21 +123,21 @@ export const mintNFTgasUSDC = async () => {
 
   const feeQuotes = feeQuotesResponse.feeQuotes as PaymasterFeeQuote[];
   const spender = feeQuotesResponse.tokenPaymasterAddress || "";
+  // Find the USDC fee quote if it exists, or set a default fee quote
+  const selectedFeeQuote =
+    feeQuotes.find((quote) => quote.symbol === "USDC") || feeQuotes[0];
 
-  // Generate list of options for the user to select
-  const choices = feeQuotes?.map((quote: any, index: number) => ({
-    name: `Option ${index + 1}: ${quote.maxGasFee}: ${quote.symbol} `,
-    value: index,
-  }));
-  // Use inquirer to prompt user to select an option
-  const { selectedOption } = await inquirer.prompt([
-    // find out what this inquirer package does
+  console.log("The selected feequote is " + selectedFeeQuote.decimal);
+  console.log("The token that is used to pay is " + selectedFeeQuote.symbol);
+
+  // ------------------------STEP 4: Get Paymaster and Data from Biconomy Paymaster --------------------------------//
+
+  finalUserOp = await biconomySmartAccount.buildTokenPaymasterUserOp(
+    partialUserOp,
     {
-      type: "list",
-      name: "selectedOption",
-      message: "Select a fee quote:",
-      choices,
-    },
-  ]);
-  const selectedFeeQuote = feeQuotes[selectedOption];
+      feeQuote: selectedFeeQuote,
+      spender: spender,
+      maxApproval: false,
+    }
+  );
 };

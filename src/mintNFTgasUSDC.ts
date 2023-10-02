@@ -1,6 +1,9 @@
 require("dotenv").config();
 const chalk = require("chalk");
 
+// to prove that USDC has effectively been used to pay the mint
+import { utils } from "ethers";
+
 // importing the bundler package and providers from the ethers package
 import { Bundler } from "@biconomy/bundler";
 import { ethers } from "ethers";
@@ -29,6 +32,26 @@ import {
 
 //----------------------------------------------------------------------------------
 
+// Create an ethers provider and wallet
+const provider = new ethers.providers.JsonRpcProvider(process.env.RPC_URL);
+const wallet = new ethers.Wallet(process.env.PRIVATE_KEY || "", provider);
+
+// USDC contract address
+const usdcAddress = process.env.USDC_ADDRESS || ""; // Replace with your actual USDC token contract address
+
+// Create a contract instance for USDC
+const usdcContract = new ethers.Contract(
+  usdcAddress,
+  ["function balanceOf(address) view returns (uint256)"],
+  wallet
+);
+
+// Function to fetch USDC balance of the EOA wallet
+const getUSDCBalance = async () => {
+  const usdcBalance = await usdcContract.balanceOf(wallet.address);
+  return usdcBalance;
+};
+
 export const mintNFTgasUSDC = async () => {
   // ------------------------STEP 1: Initialise Biconomy Smart Account SDK--------------------------------//
 
@@ -38,10 +61,6 @@ export const mintNFTgasUSDC = async () => {
     chainId: ChainId.POLYGON_MUMBAI,
     entryPointAddress: DEFAULT_ENTRYPOINT_ADDRESS, // singleton contract you have to double check it
   });
-
-  // creating a provider and an instance of a smart account
-  const provider = new ethers.providers.JsonRpcProvider(process.env.RPC_URL);
-  const wallet = new ethers.Wallet(process.env.PRIVATE_KEY || "", provider);
 
   // showing the EOA wallet address
   const eoa = await wallet.getAddress();
@@ -100,9 +119,7 @@ export const mintNFTgasUSDC = async () => {
 
   let finalUserOp = partialUserOp;
 
-  console.log(
-    "Step 2 is working and this is the txn:" + transaction.toString()
-  );
+  console.log("Step 2 is working and this is the txn:" + transaction.data);
 
   // ------------------------STEP 3: Get Fee quotes for USDC from the paymaster--------------------------------//
 
@@ -139,5 +156,82 @@ export const mintNFTgasUSDC = async () => {
       spender: spender,
       maxApproval: false,
     }
+  );
+
+  console.log(
+    "This is the final userOp that will be sent to the bundler" +
+      finalUserOp.paymasterAndData
+  );
+
+  // ------------------------STEP 5: Get Paymaster and Data from Biconomy Paymaster --------------------------------//
+
+  let paymasterServiceData = {
+    mode: PaymasterMode.ERC20, // - mandatory // now we know chosen fee token and requesting paymaster and data for it
+    feeTokenAddress: selectedFeeQuote.tokenAddress,
+    // optional params..
+    calculateGasLimits: true, // Always recommended and especially when using token paymaster
+  };
+
+  try {
+    const paymasterAndDataWithLimits =
+      await biconomyPaymaster.getPaymasterAndData(
+        finalUserOp,
+        paymasterServiceData
+      );
+    finalUserOp.paymasterAndData = paymasterAndDataWithLimits.paymasterAndData;
+
+    // below code is only needed if you sent the flag calculateGasLimits = true
+    if (
+      paymasterAndDataWithLimits.callGasLimit &&
+      paymasterAndDataWithLimits.verificationGasLimit &&
+      paymasterAndDataWithLimits.preVerificationGas
+    ) {
+      // Returned gas limits must be replaced in your op as you update paymasterAndData.
+      // Because these are the limits paymaster service signed on to generate paymasterAndData
+      // If you receive AA34 error check here..
+
+      finalUserOp.callGasLimit = paymasterAndDataWithLimits.callGasLimit;
+      finalUserOp.verificationGasLimit =
+        paymasterAndDataWithLimits.verificationGasLimit;
+      finalUserOp.preVerificationGas =
+        paymasterAndDataWithLimits.preVerificationGas;
+    }
+  } catch (e) {
+    console.log("error received ", e);
+  }
+
+  console.log("Step 5 is working");
+
+  // ------------------------STEP 6: Sign the UserOp and send to the Bundler--------------------------------//
+
+  console.log(chalk.blue(`userOp: ${JSON.stringify(finalUserOp, null, "\t")}`));
+
+  // Below function gets the signature from the user (signer provided in Biconomy Smart Account)
+  // and also send the full op to attached bundler instance
+
+  /**
+  const balanceBefore = await getUSDCBalance();
+  console.log("The USDC balance is: " + balanceBefore);
+   */
+
+  try {
+    const userOpResponse = await biconomySmartAccount.sendUserOp(finalUserOp);
+    console.log(chalk.green(`userOp Hash: ${userOpResponse.userOpHash}`));
+    const transactionDetails = await userOpResponse.wait();
+    console.log(
+      chalk.blue(
+        `transactionDetails: ${JSON.stringify(transactionDetails, null, "\t")}`
+      )
+    );
+  } catch (e) {
+    console.log("error received ", e);
+  }
+  /** 
+  const balanceAfter = await getUSDCBalance();
+  console.log("The USDC balance after: " + balanceAfter);
+  */
+
+  console.log(
+    "Go check you new NFT minted at https://testnets.opensea.io/" + scwAddress
   );
 };

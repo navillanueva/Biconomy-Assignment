@@ -1,9 +1,6 @@
 require("dotenv").config();
 const chalk = require("chalk");
 
-// to prove that USDC has effectively been used to pay the mint
-import { utils } from "ethers";
-
 // importing the bundler package and providers from the ethers package
 import { Bundler } from "@biconomy/bundler";
 import { ethers } from "ethers";
@@ -13,7 +10,7 @@ import {
   DEFAULT_ENTRYPOINT_ADDRESS,
 } from "@biconomy/account";
 
-// importing the ECSDA to create the SCW
+// importing the ECSDA to create the SCA
 import {
   ECDSAOwnershipValidationModule,
   DEFAULT_ECDSA_OWNERSHIP_MODULE,
@@ -29,54 +26,40 @@ import {
   PaymasterMode,
   SponsorUserOperationDto,
 } from "@biconomy/paymaster";
+import { getUserOpHash } from "@biconomy/common";
 
 //----------------------------------------------------------------------------------
-
-// Create an ethers provider and wallet
-const provider = new ethers.providers.JsonRpcProvider(process.env.RPC_URL);
-const wallet = new ethers.Wallet(process.env.PRIVATE_KEY || "", provider);
-
-// USDC contract address
-const usdcAddress = process.env.USDC_ADDRESS || ""; // Replace with your actual USDC token contract address
-
-// Create a contract instance for USDC
-const usdcContract = new ethers.Contract(
-  usdcAddress,
-  ["function balanceOf(address) view returns (uint256)"],
-  wallet
-);
-
-// Function to fetch USDC balance of the EOA wallet
-const getUSDCBalance = async () => {
-  const usdcBalance = await usdcContract.balanceOf(wallet.address);
-  return usdcBalance;
-};
 
 export const mintNFTgasUSDC = async () => {
   // ------------------------STEP 1: Initialise Biconomy Smart Account SDK--------------------------------//
 
-  // creating an instance of a bundler
-  const bundler = new Bundler({
-    bundlerUrl: process.env.BUNDLER_URL || "", // find a way to fix this
-    chainId: ChainId.POLYGON_MUMBAI,
-    entryPointAddress: DEFAULT_ENTRYPOINT_ADDRESS, // singleton contract you have to double check it
-  });
+  // Create an ethers provider and wallet
+  let provider = new ethers.providers.JsonRpcProvider(process.env.RPC_URL);
+  let wallet = new ethers.Wallet(process.env.PRIVATE_KEY || "", provider);
 
   // showing the EOA wallet address
   const eoa = await wallet.getAddress();
   console.log(chalk.blue(`EOA address: ${eoa}`));
 
-  // double check if this is needed or not, maybe there are other modules you can use to create the SCW
+  // creating an instance of a bundler
+  const bundler = new Bundler({
+    bundlerUrl: process.env.BUNDLER_URL || "",
+    chainId: ChainId.POLYGON_MUMBAI,
+    entryPointAddress: DEFAULT_ENTRYPOINT_ADDRESS, // only one deployed in each EVM
+  });
+
+  // creating an instance of a paymaster
+  const paymaster = new BiconomyPaymaster({
+    paymasterUrl: process.env.PAYMASTER_URL || "",
+  });
+
+  // using ECSDA module to generate signature for SCA
   const ecdsaModule = await ECDSAOwnershipValidationModule.create({
     signer: wallet,
     moduleAddress: DEFAULT_ECDSA_OWNERSHIP_MODULE,
   });
 
-  const paymaster = new BiconomyPaymaster({
-    paymasterUrl: process.env.PAYMASTER_URL || "",
-  });
-
-  // is this the creatiion of the smartaccount ???
+  // setting up all of the appropriate args for the creationg of the SCA
   const biconomySmartAccountConfig = {
     signer: wallet,
     chainId: ChainId.POLYGON_MUMBAI,
@@ -88,7 +71,7 @@ export const mintNFTgasUSDC = async () => {
     activeValidationModule: ecdsaModule,
   };
 
-  // create biconomy smart account instance
+  // create biconomy SCA instance
   const biconomySmartAccount = await BiconomySmartAccountV2.create(
     biconomySmartAccountConfig
   );
@@ -104,51 +87,50 @@ export const mintNFTgasUSDC = async () => {
     "function safeMint(address _to)",
   ]);
 
-  // Here we are minting NFT to smart account address itself
-  const data = nftInterface.encodeFunctionData("safeMint", [scwAddress]);
-
+  // setting up what we want the UserOp to do once it is executed by the bundler
+  const data = await nftInterface.encodeFunctionData("safeMint", [scwAddress]);
   const nftAddress = process.env.NFT_ADDRESS;
-
   const transaction = {
     to: nftAddress || "",
     data: data,
   };
 
-  // build partial userOp --- YOU HAVE TO UNDERSTAND ALL OF THESE FUNCTIONS
+  // build partial userOp
   let partialUserOp = await biconomySmartAccount.buildUserOp([transaction]);
-
   let finalUserOp = partialUserOp;
 
-  console.log("Step 2 is working and this is the txn:" + transaction.data);
+  console.log(
+    chalk.blue(
+      `The UserOp sent in by ${finalUserOp.sender} will use a max value of ${finalUserOp.callGasLimit} gwei to execute`
+    )
+  );
 
-  // ------------------------STEP 3: Get Fee quotes for USDC from the paymaster--------------------------------//
+  // ------------------------STEP 3: Set USDC payment of gas--------------------------------//
 
   const biconomyPaymaster =
     biconomySmartAccount.paymaster as IHybridPaymaster<SponsorUserOperationDto>;
 
-  const feeQuotesResponse = await biconomyPaymaster.getPaymasterFeeQuotesOrData(
+  const setUSDC = await biconomyPaymaster.getPaymasterFeeQuotesOrData(
     partialUserOp,
     {
-      // here we are explicitly telling by mode ERC20 that we want to pay in ERC20 tokens and expect fee quotes
-      mode: PaymasterMode.ERC20,
-      // for this script, we pass an empty array which returns the quotes for all of the tokens supported by
+      mode: PaymasterMode.ERC20, // activating mode to pay in ERC20 tokens and expect fee quotes
       tokenList: [],
-      // preferredToken is optional. If you want to pay in a specific token, you can pass its address here and get fee quotes for that token only
-      preferredToken: process.env.USDC,
+      preferredToken: process.env.USDC, // setting USDC as the token we will use to pay
     }
   );
 
-  const feeQuotes = feeQuotesResponse.feeQuotes as PaymasterFeeQuote[];
-  const spender = feeQuotesResponse.tokenPaymasterAddress || "";
+  const feeQuotes = setUSDC.feeQuotes as PaymasterFeeQuote[];
+  const spender = setUSDC.tokenPaymasterAddress || "";
+
   // Find the USDC fee quote if it exists, or set a default fee quote
   const selectedFeeQuote =
     feeQuotes.find((quote) => quote.symbol === "USDC") || feeQuotes[0];
 
-  console.log("The selected feequote is " + selectedFeeQuote.decimal);
   console.log("The token that is used to pay is " + selectedFeeQuote.symbol);
 
   // ------------------------STEP 4: Get Paymaster and Data from Biconomy Paymaster --------------------------------//
 
+  // now we add the additional fields to complete the UserOP
   finalUserOp = await biconomySmartAccount.buildTokenPaymasterUserOp(
     partialUserOp,
     {
@@ -168,7 +150,6 @@ export const mintNFTgasUSDC = async () => {
   let paymasterServiceData = {
     mode: PaymasterMode.ERC20, // - mandatory // now we know chosen fee token and requesting paymaster and data for it
     feeTokenAddress: selectedFeeQuote.tokenAddress,
-    // optional params..
     calculateGasLimits: true, // Always recommended and especially when using token paymaster
   };
 
@@ -200,19 +181,12 @@ export const mintNFTgasUSDC = async () => {
     console.log("error received ", e);
   }
 
-  console.log("Step 5 is working");
-
   // ------------------------STEP 6: Sign the UserOp and send to the Bundler--------------------------------//
 
   console.log(chalk.blue(`userOp: ${JSON.stringify(finalUserOp, null, "\t")}`));
 
   // Below function gets the signature from the user (signer provided in Biconomy Smart Account)
   // and also send the full op to attached bundler instance
-
-  /**
-  const balanceBefore = await getUSDCBalance();
-  console.log("The USDC balance is: " + balanceBefore);
-   */
 
   try {
     const userOpResponse = await biconomySmartAccount.sendUserOp(finalUserOp);
@@ -226,10 +200,6 @@ export const mintNFTgasUSDC = async () => {
   } catch (e) {
     console.log("error received ", e);
   }
-  /** 
-  const balanceAfter = await getUSDCBalance();
-  console.log("The USDC balance after: " + balanceAfter);
-  */
 
   console.log(
     "Go check you new NFT minted at https://testnets.opensea.io/" + scwAddress

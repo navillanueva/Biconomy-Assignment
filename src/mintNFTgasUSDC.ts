@@ -10,7 +10,7 @@ import {
   DEFAULT_ENTRYPOINT_ADDRESS,
 } from "@biconomy/account";
 
-// importing the ECSDA to create the SCA
+// importing the ECSDA module to create the SCA
 import {
   ECDSAOwnershipValidationModule,
   DEFAULT_ECDSA_OWNERSHIP_MODULE,
@@ -26,7 +26,6 @@ import {
   PaymasterMode,
   SponsorUserOperationDto,
 } from "@biconomy/paymaster";
-import { getUserOpHash } from "@biconomy/common";
 
 //----------------------------------------------------------------------------------
 
@@ -88,7 +87,7 @@ export const mintNFTgasUSDC = async () => {
   ]);
 
   // setting up what we want the UserOp to do once it is executed by the bundler
-  const data = await nftInterface.encodeFunctionData("safeMint", [scwAddress]);
+  const data = nftInterface.encodeFunctionData("safeMint", [scwAddress]);
   const nftAddress = process.env.NFT_ADDRESS;
   const transaction = {
     to: nftAddress || "",
@@ -97,13 +96,8 @@ export const mintNFTgasUSDC = async () => {
 
   // build partial userOp
   let partialUserOp = await biconomySmartAccount.buildUserOp([transaction]);
+  // it ocassionaly breaks when building the partial UserOP with a UnhandledPromiseRejection Error
   let finalUserOp = partialUserOp;
-
-  console.log(
-    chalk.blue(
-      `The UserOp sent in by ${finalUserOp.sender} will use a max value of ${finalUserOp.callGasLimit} gwei to execute`
-    )
-  );
 
   // ------------------------STEP 3: Set USDC payment of gas--------------------------------//
 
@@ -138,11 +132,6 @@ export const mintNFTgasUSDC = async () => {
       spender: spender,
       maxApproval: false,
     }
-  );
-
-  console.log(
-    "This is the final userOp that will be sent to the bundler" +
-      finalUserOp.paymasterAndData
   );
 
   // ------------------------STEP 5: Get Paymaster and Data from Biconomy Paymaster --------------------------------//
